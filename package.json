@@ -1,0 +1,58 @@
+{
+  "name": "streamseal",
+  "version": "0.1.0",
+  "description": "Zero-dependency streaming encryption library using Web Crypto API and TransformStream",
+  "license": "MIT",
+  "author": "Yasushi Matsumoto",
+  "type": "module",
+  "main": "./dist/client/index.js",
+  "types": "./dist/client/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && typedoc",
+    "prepublishOnly": "npm test && tsc",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"example/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"example/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example:keygen": "tsx example/keygen.ts",
+    "example:server": "tsx example/server.ts",
+    "example:server:ecdh": "tsx example/server.ts ecdh",
+    "example:client": "tsx example/client.ts",
+    "example:client:ecdh": "tsx example/client.ts ecdh",
+    "example:browser": "npm run build && tsx example/browser-server.ts",
+    "example:gencert": "tsx example/gencert.ts",
+    "example:browser:docker": "docker compose up --build",
+    "docs": "typedoc"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "express": "^5.2.1",
+    "prettier": "^3.8.3",
+    "tsx": "^4.21.0",
+    "typedoc": "^0.28.19",
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.0"
+  }
+}

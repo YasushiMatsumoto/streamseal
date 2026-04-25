@@ -1,0 +1,17 @@
+{
+  "entryPoints": ["src/client/index.ts", "src/server/index.ts"],
+  "entryPointStrategy": "expand",
+  "out": "docs",
+  "name": "streamseal",
+  "includeVersion": true,
+  "readme": "README.md",
+  "navigationLinks": {
+    "GitHub": "https://github.com/your-org/streamseal"
+  },
+  "categorizeByGroup": true,
+  "groupOrder": ["Functions", "Interfaces", "Classes", "Type Aliases", "*"],
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "plugin": [],
+  "tsconfig": "tsconfig.json"
+}

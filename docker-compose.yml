@@ -1,0 +1,24 @@
+services:
+  node:
+    build:
+      context: .
+      dockerfile: example/Dockerfile
+    volumes:
+      # Keys are sensitive -- mount from host, never baked into the image
+      - ./example/keys:/app/example/keys:ro
+      # Received files visible on the host for verification
+      - ./example/received:/app/example/received
+    # Not exposed to host -- nginx proxies internally
+    environment:
+      - PORT=8080
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8443:443"
+    volumes:
+      - ./example/nginx.conf:/etc/nginx/nginx.conf:ro
+      # mkcert-generated certs (run: npm run example:mkcert first)
+      - ./example/certs:/etc/nginx/certs:ro
+    depends_on:
+      - node

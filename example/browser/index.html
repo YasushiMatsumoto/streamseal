@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>streamseal — browser demo</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        font-size: 14px;
+        max-width: 680px;
+        margin: 2rem auto;
+        padding: 0 1.25rem;
+        color: #1e1e1e;
+        background: #fff;
+      }
+      h1 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 0.25rem;
+      }
+      .site-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+      }
+      .site-header img {
+        height: 56px;
+        width: auto;
+        flex-shrink: 0;
+      }
+      .subtitle {
+        color: #666;
+        font-size: 0.8rem;
+        margin: 0;
+      }
+
+      /* ── notice ─────────────────────────────────────── */
+      .notice {
+        font-size: 0.8rem;
+        background: #fff8e1;
+        color: #7a5900;
+        border-left: 3px solid #f5c518;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0 4px 4px 0;
+        margin-bottom: 1.25rem;
+      }
+
+      /* ── form ────────────────────────────────────────── */
+      .row {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      label {
+        font-size: 0.75rem;
+        color: #555;
+        font-weight: 500;
+      }
+      select {
+        font: inherit;
+        padding: 0.35rem 0.5rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: #fafafa;
+      }
+      input[type="file"] {
+        font: inherit;
+        flex: 1;
+        min-width: 0;
+      }
+      button {
+        font: inherit;
+        padding: 0.4rem 1.25rem;
+        background: #0078d4;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      button:not(:disabled):hover {
+        background: #006bbf;
+      }
+
+      /* ── progress ────────────────────────────────────── */
+      .progress-wrap {
+        height: 6px;
+        background: #e8e8e8;
+        border-radius: 3px;
+        margin-bottom: 0.3rem;
+        overflow: hidden;
+      }
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        background: #0078d4;
+        border-radius: 3px;
+        transition: width 0.15s linear;
+      }
+      .progress-label {
+        font-size: 0.78rem;
+        color: #555;
+        text-align: right;
+        height: 1.1em;
+        margin-bottom: 1rem;
+      }
+
+      /* ── stats grid ──────────────────────────────────── */
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
+      }
+      @media (max-width: 480px) {
+        .stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      .stat {
+        background: #f5f5f5;
+        border-radius: 4px;
+        padding: 0.5rem 0.6rem;
+      }
+      .stat-label {
+        font-size: 0.7rem;
+        color: #666;
+        margin-bottom: 0.15rem;
+      }
+      .stat-value {
+        font-family: "Consolas", "Courier New", monospace;
+        font-size: 0.82rem;
+        font-weight: 600;
+      }
+
+      /* ── log ─────────────────────────────────────────── */
+      .log-label {
+        font-size: 0.75rem;
+        color: #555;
+        font-weight: 500;
+        margin-bottom: 0.25rem;
+      }
+      pre#log,
+      pre#decrypt-log {
+        margin: 0;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 0.75rem 1rem;
+        border-radius: 4px;
+        overflow-y: auto;
+        font-family: "Consolas", "Courier New", monospace;
+        font-size: 0.78rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      pre#log {
+        height: 220px;
+      }
+      pre#decrypt-log {
+        height: 120px;
+      }
+      button.secondary {
+        background: #6c757d;
+      }
+      button.secondary:not(:disabled):hover {
+        background: #5a6268;
+      }
+      .ok {
+        color: #4ec9b0;
+      }
+      .err {
+        color: #f48771;
+      }
+      .dim {
+        color: #888;
+      }
+
+      /* ── memory profiler section ─────────────────────── */
+      .mp-section {
+        margin-top: 2rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #e0e0e0;
+      }
+      .mp-section h2 {
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin: 0 0 1rem;
+      }
+      .mp-section h3 {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #444;
+        margin: 1rem 0 0.4rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .mp-kv {
+        display: grid;
+        grid-template-columns: 11rem 1fr;
+        gap: 0.2rem 0.5rem;
+        font-size: 0.8rem;
+        margin-bottom: 0.25rem;
+      }
+      .mp-key {
+        color: #666;
+      }
+      .mp-value {
+        font-family: "Consolas", "Courier New", monospace;
+        font-weight: 600;
+      }
+      [data-status="ok"] {
+        color: #4ec9b0;
+      }
+      [data-status="ng"] {
+        color: #f48771;
+      }
+      [data-status="idle"] {
+        color: #888;
+      }
+      [data-status="measuring"] {
+        color: #f5c518;
+      }
+      [data-status="finished"] {
+        color: #4ec9b0;
+      }
+      [data-status="failed"] {
+        color: #f48771;
+      }
+      pre#memory-log-output {
+        margin: 0;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 0.75rem 1rem;
+        border-radius: 4px;
+        height: 180px;
+        overflow-y: auto;
+        font-family: "Consolas", "Courier New", monospace;
+        font-size: 0.75rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      #memory-export-json {
+        font-family: "Consolas", "Courier New", monospace;
+        font-size: 0.72rem;
+        width: 100%;
+        height: 220px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 0.5rem;
+        resize: vertical;
+        background: #fafafa;
+        color: #1e1e1e;
+      }
+      .mp-buttons {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+      }
+      .mp-buttons button {
+        padding: 0.35rem 1rem;
+        font-size: 0.8rem;
+      }
+
+      /* ── diagnostic tables ───────────────────────────────── */
+      .mp-table-wrap {
+        overflow-x: auto;
+        margin-bottom: 0.5rem;
+      }
+      .mp-table {
+        border-collapse: collapse;
+        font-size: 0.72rem;
+        width: 100%;
+      }
+      .mp-table th,
+      .mp-table td {
+        border: 1px solid #ddd;
+        padding: 0.18rem 0.4rem;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .mp-table th {
+        background: #f0f0f0;
+        font-weight: 600;
+        text-align: center;
+      }
+      .mp-table tr:nth-child(even) td {
+        background: #fafafa;
+      }
+      .mp-3col {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.3rem;
+        margin-bottom: 0.5rem;
+      }
+      .mp-3col .stat {
+        background: #f5f5f5;
+        border-radius: 4px;
+        padding: 0.35rem 0.5rem;
+      }
+      .mp-3col .stat-label {
+        font-size: 0.65rem;
+        color: #666;
+        margin-bottom: 0.1rem;
+      }
+      .mp-3col .stat-value {
+        font-family: "Consolas", "Courier New", monospace;
+        font-size: 0.78rem;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="site-header">
+      <img src="logo.png" alt="streamseal logo" />
+      <div>
+        <h1>streamseal — browser demo</h1>
+        <p class="subtitle">Streaming client-side encryption via Web Crypto + TransformStream</p>
+      </div>
+    </div>
+
+    <div class="notice">
+      ⚠ Streaming upload requires <strong>Chrome 105+</strong>, Safari 16.4+, or Edge 105+. Firefox
+      does not support streaming request bodies in <code>fetch</code>.
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="algo">Algorithm</label>
+        <select id="algo">
+          <option value="rsa">RSA-OAEP</option>
+          <option value="ecdh">ECDH</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="chunk-size">Chunk size</label>
+        <select id="chunk-size">
+          <option value="65536">64 KiB</option>
+          <option value="262144">256 KiB</option>
+          <option value="1048576">1 MiB</option>
+          <option value="4194304">4 MiB</option>
+        </select>
+      </div>
+      <div class="field" style="flex: 1; min-width: 0">
+        <label for="file-input">File</label>
+        <input type="file" id="file-input" />
+      </div>
+      <button id="upload-btn" disabled>Select a file</button>
+      <button id="cancel-btn" class="secondary" disabled>Cancel</button>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <div class="progress-label" id="progress-label"></div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">File size</div>
+        <div class="stat-value" id="s-filesize">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Encrypted</div>
+        <div class="stat-value" id="s-encrypted">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">JS Heap used</div>
+        <div class="stat-value" id="s-heap">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">JS Heap limit</div>
+        <div class="stat-value" id="s-heap-limit">—</div>
+      </div>
+      <div class="stat" style="grid-column: 1 / -1">
+        <div class="stat-label">Key fingerprint</div>
+        <div
+          class="stat-value"
+          id="s-fingerprint"
+          style="font-size: 0.72rem; word-break: break-all"
+        >
+          —
+        </div>
+      </div>
+    </div>
+
+    <div class="log-label">Log</div>
+    <pre id="log"></pre>
+
+    <!-- ── Download & Decrypt ──────────────────────────────────────────── -->
+    <section class="mp-section" id="decrypt-section">
+      <h2>Download &amp; Decrypt</h2>
+      <p style="font-size: 0.75rem; color: #888; margin: 0 0 0.75rem">
+        ⚠ DEMO ONLY — the browser fetches the server&#x2019;s private key to decrypt in-browser.
+        Never expose private keys to clients in production.
+      </p>
+      <div class="row">
+        <div class="field" style="flex: 1; min-width: 0">
+          <label for="download-file">Encrypted file</label>
+          <input
+            type="text"
+            id="download-file"
+            placeholder="upload-….enc"
+            readonly
+            style="
+              font: inherit;
+              padding: 0.35rem 0.5rem;
+              border: 1px solid #ccc;
+              border-radius: 4px;
+              background: #fafafa;
+              width: 100%;
+            "
+          />
+        </div>
+        <button id="download-btn" disabled>Download &amp; Decrypt</button>
+      </div>
+      <div class="log-label">Decrypt log</div>
+      <pre id="decrypt-log"></pre>
+    </section>
+
+    <!-- ── Memory Profiler ──────────────────────────────────────────────── -->
+    <section class="mp-section" id="memory-profiler-section">
+      <h2>Memory Profiling</h2>
+
+      <div class="mp-kv">
+        <span class="mp-key">Support</span>
+        <span class="mp-value" id="memory-support-status">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">Status</span>
+        <span class="mp-value" id="memory-profiler-status" data-status="idle">idle</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">Sample count</span>
+        <span class="mp-value" id="memory-sample-count">0</span>
+      </div>
+
+      <h3>Latest Sample</h3>
+      <div class="mp-kv">
+        <span class="mp-key">Used JS Heap</span>
+        <span class="mp-value" id="latest-used-js-heap">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">Total JS Heap</span>
+        <span class="mp-value" id="latest-total-js-heap">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">JS Heap Limit</span>
+        <span class="mp-value" id="latest-js-heap-limit">-</span>
+      </div>
+
+      <h3>Summary</h3>
+      <div class="mp-kv">
+        <span class="mp-key">Before upload</span>
+        <span class="mp-value" id="summary-before">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">Peak during session</span>
+        <span class="mp-value" id="summary-peak">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">After upload</span>
+        <span class="mp-value" id="summary-after">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">Peak − Before</span>
+        <span class="mp-value" id="summary-delta-peak">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">After − Before</span>
+        <span class="mp-value" id="summary-delta-after">-</span>
+      </div>
+
+      <!-- ── A. Post-upload memory ─────────────────────────────────────── -->
+      <h3>Post-upload Memory</h3>
+      <p style="font-size: 0.7rem; color: #666; margin: 0 0 0.4rem">
+        Interpretation: drops at <em>After release</em> → retained references; drops slowly over
+        5–30s → GC lag; stays high at 30s → possible leak.
+      </p>
+      <div class="mp-kv">
+        <span class="mp-key">After upload</span>
+        <span class="mp-value" id="post-after-upload">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">After release</span>
+        <span class="mp-value" id="post-after-release">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">After 5s</span>
+        <span class="mp-value" id="post-after-5s">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">After 15s</span>
+        <span class="mp-value" id="post-after-15s">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">After 30s</span>
+        <span class="mp-value" id="post-after-30s">-</span>
+      </div>
+
+      <!-- ── B. Chunk stats ────────────────────────────────────────────── -->
+      <h3>Chunk Stats</h3>
+      <p style="font-size: 0.7rem; color: #666; margin: 0 0 0.4rem">
+        If peak heap ≈ 2× chunk size → one plaintext + one ciphertext buffer in memory. Change
+        <em>Chunk size</em> above to see if peak scales proportionally.
+      </p>
+      <div class="mp-kv">
+        <span class="mp-key">Total chunks</span>
+        <span class="mp-value" id="chunk-total-count">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">Total input</span>
+        <span class="mp-value" id="chunk-total-input">-</span>
+      </div>
+      <div class="mp-kv">
+        <span class="mp-key">Total output</span>
+        <span class="mp-value" id="chunk-total-output">-</span>
+      </div>
+      <div class="mp-3col" style="margin-top: 0.4rem">
+        <div class="stat">
+          <div class="stat-label">Min input chunk</div>
+          <div class="stat-value" id="chunk-min-input">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Avg input chunk</div>
+          <div class="stat-value" id="chunk-avg-input">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Max input chunk</div>
+          <div class="stat-value" id="chunk-max-input">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Min output chunk</div>
+          <div class="stat-value" id="chunk-min-output">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Avg output chunk</div>
+          <div class="stat-value" id="chunk-avg-output">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Max output chunk</div>
+          <div class="stat-value" id="chunk-max-output">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Min encrypt ms</div>
+          <div class="stat-value" id="chunk-min-encrypt">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Avg encrypt ms</div>
+          <div class="stat-value" id="chunk-avg-encrypt">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Max encrypt ms</div>
+          <div class="stat-value" id="chunk-max-encrypt">-</div>
+        </div>
+      </div>
+
+      <!-- ── C. Recent chunk activity ──────────────────────────────────── -->
+      <h3>
+        Recent Chunk Activity
+        <span style="font-weight: 400; font-size: 0.75rem; color: #888">(last 10)</span>
+      </h3>
+      <p style="font-size: 0.7rem; color: #666; margin: 0 0 0.4rem">
+        <em>Delay ms</em>: time since previous chunk was handed to fetch — high values suggest
+        network/fetch backpressure. <em>Encrypt ms</em>: time per AES-GCM operation.
+      </p>
+      <div class="mp-table-wrap">
+        <table class="mp-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Input</th>
+              <th>Output</th>
+              <th>Encrypt ms</th>
+              <th>Delay ms</th>
+              <th>+ms</th>
+            </tr>
+          </thead>
+          <tbody id="recent-chunks-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- ── D. Session history ─────────────────────────────────────────── -->
+      <h3>
+        Session History
+        <span style="font-weight: 400; font-size: 0.75rem; color: #888">(last 5)</span>
+      </h3>
+      <p style="font-size: 0.7rem; color: #666; margin: 0 0 0.4rem">
+        Watch <em>Before</em> per session — if it grows with each run, memory is not fully returning
+        to baseline between uploads.
+      </p>
+      <div class="mp-table-wrap">
+        <table class="mp-table">
+          <thead>
+            <tr>
+              <th>Session</th>
+              <th>Algo / Chunk</th>
+              <th>File</th>
+              <th>Duration</th>
+              <th>Before</th>
+              <th>Peak</th>
+              <th>After upload</th>
+              <th>After release</th>
+              <th>5s</th>
+              <th>15s</th>
+              <th>30s</th>
+            </tr>
+          </thead>
+          <tbody id="session-history-tbody"></tbody>
+        </table>
+      </div>
+      <div class="mp-buttons" style="margin-bottom: 0.75rem">
+        <button id="reset-sessions-button" type="button">Reset sessions</button>
+      </div>
+
+      <h3>Logs</h3>
+      <pre id="memory-log-output"></pre>
+
+      <h3>Export JSON</h3>
+      <textarea id="memory-export-json" readonly></textarea>
+      <div class="mp-buttons">
+        <button id="copy-memory-results-button" type="button">Copy results</button>
+        <button id="reset-memory-results-button" type="button">Reset results</button>
+      </div>
+    </section>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
