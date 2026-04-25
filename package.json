@@ -4,6 +4,14 @@
   "description": "Zero-dependency streaming encryption library using Web Crypto API and TransformStream",
   "license": "MIT",
   "author": "Yasushi Matsumoto",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YasushiMatsumoto/streamseal.git"
+  },
+  "homepage": "https://github.com/YasushiMatsumoto/streamseal#readme",
+  "bugs": {
+    "url": "https://github.com/YasushiMatsumoto/streamseal/issues"
+  },
   "type": "module",
   "main": "./dist/client/index.js",
   "types": "./dist/client/index.d.ts",
