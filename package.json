@@ -1,6 +1,6 @@
 {
   "name": "streamseal",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Zero-dependency streaming encryption library using Web Crypto API and TransformStream",
   "license": "MIT",
   "author": "Yasushi Matsumoto",
