@@ -302,15 +302,15 @@ The returned `Decryptor` has one method:
 
 **`decryptStream(encrypted, options?)`** → `ReadableStream<Uint8Array>`
 
-| Parameter                  | Type                                                           | Description                                                                            |
-| -------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `encrypted`                | `ReadableStream`                                              | Ciphertext stream produced by `EncryptingStream`                                       |
-| `options.onProgress`       | `(n: number) => void`                                         | Called after each chunk with cumulative decrypted bytes                                |
-| `options.keyResolver`      | `(keyId, algorithm) => CryptoKey \| Promise<CryptoKey>`        | Optional resolver for header-embedded `keyId` values                                  |
-| `options.maxHeaderSize`    | `number`                                                       | Default `65536`. Rejects oversized headers early                                       |
-| `options.maxChunkSize`     | `number`                                                       | Default `16777216` (16 MiB). Rejects oversized encrypted chunks                        |
-| `options.maxPlaintextSize` | `number`                                                       | Default `8589934592` (8 GiB). Caps cumulative decrypted output                         |
-| `options.maxChunks`        | `number`                                                       | Default `1000000`. Caps total encrypted chunk count (including terminal marker)        |
+| Parameter                  | Type                                                    | Description                                                                     |
+| -------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `encrypted`                | `ReadableStream`                                        | Ciphertext stream produced by `EncryptingStream`                                |
+| `options.onProgress`       | `(n: number) => void`                                   | Called after each chunk with cumulative decrypted bytes                         |
+| `options.keyResolver`      | `(keyId, algorithm) => CryptoKey \| Promise<CryptoKey>` | Optional resolver for header-embedded `keyId` values                            |
+| `options.maxHeaderSize`    | `number`                                                | Default `65536`. Rejects oversized headers early                                |
+| `options.maxChunkSize`     | `number`                                                | Default `16777216` (16 MiB). Rejects oversized encrypted chunks                 |
+| `options.maxPlaintextSize` | `number`                                                | Default `8589934592` (8 GiB). Caps cumulative decrypted output                  |
+| `options.maxChunks`        | `number`                                                | Default `1000000`. Caps total encrypted chunk count (including terminal marker) |
 
 ### `decryptFetch(url, privateKeyPem, algorithm, options?, fetchInit?)` → `Promise<ReadableStream<Uint8Array>>`
 
