@@ -3,10 +3,18 @@ import { CHUNK_LEN_FIELD, GCM_IV_LENGTH } from "./constants.js";
 /**
  * Build the AAD (Additional Authenticated Data) for a chunk.
  * Encoding the chunk index prevents chunk reordering attacks.
+ * Optionally appending a header hash binds chunk auth tags to the parsed header.
  */
-export function buildAad(chunkIndex: number): Uint8Array<ArrayBuffer> {
-  const buf = new Uint8Array(4);
+export function buildAad(
+  chunkIndex: number,
+  headerHash?: Uint8Array<ArrayBuffer>,
+): Uint8Array<ArrayBuffer> {
+  const hashLen = headerHash?.byteLength ?? 0;
+  const buf = new Uint8Array(4 + hashLen);
   new DataView(buf.buffer).setUint32(0, chunkIndex, false /* big-endian */);
+  if (headerHash) {
+    buf.set(headerHash, 4);
+  }
   return buf;
 }
 

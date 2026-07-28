@@ -1,8 +1,27 @@
 {
   "name": "streamseal",
-  "version": "0.1.1",
-  "description": "Zero-dependency streaming encryption library using Web Crypto API and TransformStream",
-  "license": "MIT",
+  "version": "0.2.0",
+  "description": "Encrypt large files in the browser while streaming uploads, using Web Crypto, AES-GCM and TransformStream",
+  "keywords": [
+    "streaming-encryption",
+    "file-encryption",
+    "client-side-encryption",
+    "browser-encryption",
+    "encrypted-upload",
+    "secure-upload",
+    "large-file-encryption",
+    "web-crypto",
+    "webcrypto",
+    "transformstream",
+    "readablestream",
+    "aes-gcm",
+    "rsa-oaep",
+    "ecdh",
+    "envelope-encryption",
+    "zero-dependency",
+    "typescript"
+  ],
+  "license": "Apache-2.0",
   "author": "Yasushi Matsumoto",
   "repository": {
     "type": "git",
@@ -13,6 +32,9 @@
     "url": "https://github.com/YasushiMatsumoto/streamseal/issues"
   },
   "type": "module",
+  "engines": {
+    "node": ">=18.5.0"
+  },
   "main": "./dist/client/index.js",
   "types": "./dist/client/index.d.ts",
   "exports": {
@@ -28,11 +50,15 @@
   "files": [
     "dist/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "SECURITY.md"
   ],
   "scripts": {
     "build": "tsc && typedoc",
-    "prepublishOnly": "npm test && tsc",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit",
+    "pack:dry-run": "npm pack --dry-run",
+    "ci": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run pack:dry-run",
+    "prepublishOnly": "npm run ci",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"example/**/*.ts\"",

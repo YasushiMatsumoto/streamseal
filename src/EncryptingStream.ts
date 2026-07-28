@@ -1,5 +1,5 @@
 import { Algorithm, DEFAULT_CHUNK_SIZE } from "./constants.js";
-import { encryptChunk, generateDataKey, generateIv } from "./crypto-utils.js";
+import { encryptChunk, generateDataKey, generateIv, sha256 } from "./crypto-utils.js";
 import { buildAad, encodeChunk } from "./chunk.js";
 import { encodeHeader } from "./header.js";
 import { encodeRsaOaepHeaderBody, wrapDek } from "./algorithms/rsa-oaep.js";
@@ -55,6 +55,7 @@ export class EncryptingStream implements TransformStream<Uint8Array, Uint8Array>
     }
 
     const { bytes: headerBytes } = encodeHeader(algorithm, headerBody);
+    const headerHash = await sha256(headerBytes as Uint8Array<ArrayBuffer>);
 
     // --- Build TransformStream ---
     let chunkIndex = 0;
@@ -102,7 +103,7 @@ export class EncryptingStream implements TransformStream<Uint8Array, Uint8Array>
           const plaintext = drainExact(chunkSize);
 
           const iv = generateIv();
-          const aad = buildAad(chunkIndex++);
+          const aad = buildAad(chunkIndex++, headerHash);
           const ciphertext = await encryptChunk(capturedDek, iv, plaintext, aad);
           controller.enqueue(encodeChunk(iv, ciphertext));
 
@@ -117,13 +118,25 @@ export class EncryptingStream implements TransformStream<Uint8Array, Uint8Array>
           const plaintext = drainExact(queueBytes);
 
           const iv = generateIv();
-          const aad = buildAad(chunkIndex++);
+          const aad = buildAad(chunkIndex++, headerHash);
           const ciphertext = await encryptChunk(capturedDek, iv, plaintext, aad);
           controller.enqueue(encodeChunk(iv, ciphertext));
 
           totalEncrypted += plaintext.byteLength;
           onProgress?.(totalEncrypted);
         }
+
+        // Emit an authenticated terminal marker (empty plaintext chunk).
+        // Decryptors require this marker to detect full-last-chunk truncation.
+        const finalIv = generateIv();
+        const finalAad = buildAad(chunkIndex++, headerHash);
+        const finalCiphertext = await encryptChunk(
+          capturedDek,
+          finalIv,
+          new Uint8Array(0) as Uint8Array<ArrayBuffer>,
+          finalAad,
+        );
+        controller.enqueue(encodeChunk(finalIv, finalCiphertext));
       },
     });
 

@@ -29,7 +29,7 @@ export interface Decryptor {
 
 /**
  * Create a decryptor from a PEM-encoded private key.
- * The algorithm is detected automatically from the stream header.
+ * The provided algorithm must match the key type and encrypted stream.
  *
  * @param privateKeyPem  PKCS#8 PEM-encoded private key (RSA-OAEP or ECDH P-256)
  * @param algorithm      Must match the algorithm used during encryption

@@ -4,16 +4,36 @@
   <img src="example/browser/logo.png" alt="streamseal logo" width="260" />
 </p>
 
-Zero-dependency streaming encryption upload library using the **Web Crypto API** and **TransformStream**. Encrypt files client-side while streaming them to a server via `fetch`, with no data ever stored in memory in full.
+Encrypt large files in the browser before uploading, without loading the entire file into memory.
+
+streamseal is a zero-dependency TypeScript library for client-side streaming file encryption using Web Crypto, AES-GCM, and TransformStream.
 
 ## Features
 
 - **Streaming** — encrypts on-the-fly as bytes pass through a `TransformStream`; no full-file buffering
 - **Envelope encryption** — a random per-upload DEK is protected by the recipient's public key
 - **RSA-OAEP and ECDH** — choose your key exchange algorithm
-- **Tamper-evident** — AES-GCM auth tags + chunk index in AAD prevent both bit-flipping and chunk reordering
+- **Tamper-evident** — AES-GCM auth tags + chunk index in AAD prevent bit-flipping, reordering, and end-truncation
 - **Zero dependencies** — only Web Crypto API and the WHATWG Streams API
-- **Node.js 18+ compatible** — same code works server-side via `globalThis.crypto`
+- **Node.js 18.5+ compatible** — same code works server-side via `globalThis.crypto`
+
+## Use Cases
+
+- Encrypt files in the browser before uploading them
+- Stream-encrypt large files without full-file buffering
+- Decrypt uploaded files incrementally on a Node.js server
+- Build client-side encrypted file-sharing or document pipelines
+- Reduce plaintext exposure in transit and upload intermediaries
+
+## Security Notice
+
+streamseal has not undergone an independent cryptographic security audit.
+
+It uses standard Web Crypto primitives, but the wire format and streaming
+protocol are project-specific. Do not use streamseal for high-value,
+safety-critical, or regulated data without an independent security review.
+
+See [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md) before production use.
 
 ---
 
@@ -150,7 +170,7 @@ a.click();
 
 ---
 
-### Server (Node.js 18+)
+### Server (Node.js 18.5+)
 
 ```ts
 import { createDecryptor, Algorithm } from "streamseal/server";
@@ -220,7 +240,17 @@ app.post("/api/upload", async (req, res) => {
 [ciphertext: variable]  (plaintext + 16 B GCM auth tag)
 ```
 
-The **chunk index** (0-based, big-endian uint32) is passed as AES-GCM **AAD**, so swapping or reordering chunks causes authentication failure.
+The stream ends with an **authenticated terminal marker** (an encrypted empty chunk).
+Decryption requires this marker by default, so removing the final chunk is detected.
+
+The AES-GCM **AAD** is:
+
+```
+[chunk_index: 4 B big-endian] + [sha256(serialized_header): 32 B]
+```
+
+This binds every chunk to both its position and the exact header bytes, so swapping,
+reordering, or header tampering causes authentication failure.
 
 ---
 
@@ -259,10 +289,16 @@ The returned `Decryptor` has one method:
 
 **`decryptStream(encrypted, options?)`** → `ReadableStream<Uint8Array>`
 
-| Parameter            | Type                  | Description                                             |
-| -------------------- | --------------------- | ------------------------------------------------------- |
-| `encrypted`          | `ReadableStream`      | Ciphertext stream produced by `EncryptingStream`        |
-| `options.onProgress` | `(n: number) => void` | Called after each chunk with cumulative decrypted bytes |
+| Parameter                         | Type                  | Description                                                                            |
+| --------------------------------- | --------------------- | -------------------------------------------------------------------------------------- |
+| `encrypted`                       | `ReadableStream`      | Ciphertext stream produced by `EncryptingStream`                                       |
+| `options.onProgress`              | `(n: number) => void` | Called after each chunk with cumulative decrypted bytes                                |
+| `options.requireFinalChunkMarker` | `boolean`             | Default `true`. Set `false` only to decrypt legacy ciphertexts without terminal marker |
+| `options.allowLegacyChunkAad`     | `boolean`             | Default `false`. Set `true` only for old ciphertexts that used chunk-index-only AAD    |
+| `options.maxHeaderSize`           | `number`              | Default `65536`. Rejects oversized headers early                                       |
+| `options.maxChunkSize`            | `number`              | Default `16777216` (16 MiB). Rejects oversized encrypted chunks                        |
+| `options.maxPlaintextSize`        | `number`              | Default `8589934592` (8 GiB). Caps cumulative decrypted output                         |
+| `options.maxChunks`               | `number`              | Default `1000000`. Caps total encrypted chunk count (including terminal marker)        |
 
 ### `decryptFetch(url, privateKeyPem, algorithm, options?, fetchInit?)` → `Promise<ReadableStream<Uint8Array>>`
 
@@ -308,7 +344,9 @@ if (fingerprint !== EXPECTED_FINGERPRINT) {
 
 ```bash
 npm install
-npm test           # vitest run (Node.js 18+)
+npm test           # vitest run (Node.js 18.5+)
+npm run typecheck
+npm run ci         # lint + format + typecheck + test + build + npm pack --dry-run
 npm run test:watch
 npm run build      # tsc
 npm run docs       # generate HTML docs → docs/
@@ -365,7 +403,7 @@ src/
     fetch-types.d.ts     type extension for RequestInit.duplex
   server/
     index.ts             createDecryptor (Node.js 18+)
-tests/                   Vitest tests (60 tests)
+tests/                   Vitest tests (66 tests)
 example/                 working client / server / keygen demo
 ```
 
@@ -375,6 +413,9 @@ example/                 working client / server / keygen demo
 
 - IVs are generated with `crypto.getRandomValues` — never reused
 - Chunk indices in AAD prevent reordering attacks
+- Header hash in AAD binds chunks to the parsed header (algorithm/header tampering detection)
+- Authenticated terminal marker detects full-last-chunk truncation
+- Decryptor resource limits reject oversized headers/chunks and excessive stream size
 - AES-GCM with 128-bit auth tags provides authenticated encryption
 - RSA-OAEP modulus: 2048 bits minimum
 - ECDH uses P-256; shared secret is processed through HKDF-SHA-256
