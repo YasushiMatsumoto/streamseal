@@ -2,8 +2,7 @@
  * streamseal — server entry point (Node.js 18+)
  *
  * Uses the same DecryptingStream core as the browser build.
- * Node.js 18+ exposes globalThis.crypto.subtle and TransformStream globally,
- * so no polyfills are needed.
+ * Web Crypto access is resolved at runtime for Node/browser compatibility.
  */
 export { Algorithm } from "../constants.js";
 export { DecryptingStream } from "../DecryptingStream.js";

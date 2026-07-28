@@ -7,8 +7,7 @@ import {
 } from "../constants.js";
 import { importRawAesKey } from "../crypto-utils.js";
 import { InvalidHeaderError } from "../errors.js";
-
-const subtle = globalThis.crypto.subtle;
+import { cryptoImpl, subtle } from "../webcrypto.js";
 
 // ---------------------------------------------------------------------------
 // PEM conversion helpers
@@ -96,7 +95,7 @@ export async function deriveDekSender(recipientPublicKey: CryptoKey): Promise<Ec
   );
 
   // Random per-session salt (RFC 5869 recommended)
-  const salt = globalThis.crypto.getRandomValues(
+  const salt = cryptoImpl.getRandomValues(
     new Uint8Array(HKDF_SALT_LENGTH),
   ) as Uint8Array<ArrayBuffer>;
 

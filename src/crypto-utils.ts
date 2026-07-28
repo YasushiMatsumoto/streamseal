@@ -1,6 +1,5 @@
 import { AES_KEY_LENGTH, GCM_IV_LENGTH, GCM_TAG_LENGTH } from "./constants.js";
-
-const subtle = globalThis.crypto.subtle;
+import { cryptoImpl, subtle } from "./webcrypto.js";
 
 export async function generateDataKey(): Promise<CryptoKey> {
   return subtle.generateKey({ name: "AES-GCM", length: AES_KEY_LENGTH }, true, [
@@ -23,7 +22,7 @@ export async function importRawAesKey(raw: Uint8Array<ArrayBuffer>): Promise<Cry
 
 export function generateIv(): Uint8Array<ArrayBuffer> {
   const iv = new Uint8Array(GCM_IV_LENGTH);
-  globalThis.crypto.getRandomValues(iv);
+  cryptoImpl.getRandomValues(iv);
   return iv;
 }
 
