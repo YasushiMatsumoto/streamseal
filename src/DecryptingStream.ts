@@ -27,16 +27,6 @@ export interface DecryptingStreamOptions {
   onProgress?: (decryptedBytes: number) => void;
   /** Resolve the recipient key for a header-embedded keyId. */
   keyResolver?: (keyId: string | undefined, algorithm: Algorithm) => Promise<CryptoKey> | CryptoKey;
-  /**
-   * Require an authenticated terminal marker (empty plaintext chunk) at the end.
-   * Disabling this allows decrypting legacy ciphertexts but weakens truncation detection.
-   */
-  requireFinalChunkMarker?: boolean;
-  /**
-   * Allow decrypting legacy ciphertexts that authenticated only chunk index in AAD.
-   * Keep disabled in normal operation; enabling weakens downgrade resistance.
-   */
-  allowLegacyChunkAad?: boolean;
   /** Maximum accepted serialized header length (prefix + body), in bytes. */
   maxHeaderSize?: number;
   /** Maximum accepted encrypted chunk payload length, in bytes. */
@@ -69,8 +59,6 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
     const {
       onProgress,
       keyResolver,
-      requireFinalChunkMarker = true,
-      allowLegacyChunkAad = false,
       maxHeaderSize = DEFAULT_MAX_HEADER_SIZE,
       maxChunkSize = DEFAULT_MAX_CHUNK_SIZE,
       maxPlaintextSize = DEFAULT_MAX_PLAINTEXT_SIZE,
@@ -286,21 +274,10 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
           try {
             plaintext = await decryptChunk(dek!, iv, ciphertext, aad);
           } catch (err) {
-            if (allowLegacyChunkAad) {
-              try {
-                plaintext = await decryptChunk(dek!, iv, ciphertext, buildAad(chunkIndex));
-              } catch {
-                throw new AuthenticationFailedError(
-                  `DecryptingStream: authentication failed at chunk ${chunkIndex} — data may be tampered or corrupt`,
-                  { cause: err },
-                );
-              }
-            } else {
-              throw new AuthenticationFailedError(
-                `DecryptingStream: authentication failed at chunk ${chunkIndex} — data may be tampered or corrupt`,
-                { cause: err },
-              );
-            }
+            throw new AuthenticationFailedError(
+              `DecryptingStream: authentication failed at chunk ${chunkIndex} — data may be tampered or corrupt`,
+              { cause: err },
+            );
           }
           chunkIndex++;
 
@@ -329,7 +306,7 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
             `DecryptingStream: ${queueBytes} trailing bytes remain after stream ended — possibly truncated or corrupt data`,
           );
         }
-        if (requireFinalChunkMarker && !sawFinalChunkMarker) {
+        if (!sawFinalChunkMarker) {
           throw new TruncatedStreamError(
             "DecryptingStream: missing final chunk marker — ciphertext may be truncated",
           );

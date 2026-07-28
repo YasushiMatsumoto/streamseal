@@ -45,14 +45,12 @@
 
 ## Residual Risks
 
-- Legacy compatibility options can weaken guarantees when enabled.
 - Incorrect operational key management can nullify cryptographic protections.
 - Large-scale abuse may still cause resource pressure if configured limits are too high.
 
 ## Operational Recommendations
 
 - Pin and verify public key fingerprints before encryption.
-- Keep `requireFinalChunkMarker` enabled.
-- Keep `allowLegacyChunkAad` disabled except controlled migrations.
+- Keep the current authenticated format and terminal marker requirement enabled.
 - Set strict `maxHeaderSize`, `maxChunkSize`, `maxPlaintextSize`, and `maxChunks` per environment.
 - Monitor decryption failures and rate-limit untrusted upload endpoints.

@@ -29,12 +29,9 @@ streamseal is a zero-dependency TypeScript library for client-side streaming fil
 ## Security Notice
 
 streamseal has not undergone an independent cryptographic security audit.
+It uses standard Web Crypto primitives, but the wire format and streaming protocol are project-specific. Do not use streamseal for high-value, safety-critical, or regulated data without an independent security review.
 
-It uses standard Web Crypto primitives, but the wire format and streaming
-protocol are project-specific. Do not use streamseal for high-value,
-safety-critical, or regulated data without an independent security review.
-
-See [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md) before production use.
+For the full policy, threat model, and disclosure process, see [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md).
 
 ---
 
@@ -258,8 +255,14 @@ reordering, or header tampering causes authentication failure.
 - `STRENC01` is the current supported wire format tag.
 - Unknown `STRENCxx` version tags are rejected.
 - Package version and wire format version are managed independently.
-- Security-sensitive format changes should use a new wire format tag.
-- Legacy compatibility should be opt-in and explicit at API call sites.
+
+## Compatibility and Migration
+
+streamseal keeps the current authenticated format as the only supported wire format.
+
+- Existing decryptors that already receive a single private key continue to work unchanged.
+- The optional `keyId` header envelope is additive; if you do not use it, decryption behaves as before.
+- The current implementation requires the authenticated terminal marker and header-bound chunk AAD. Older variants are no longer accepted.
 
 ---
 
@@ -267,12 +270,12 @@ reordering, or header tampering causes authentication failure.
 
 ### `createEncryptor(publicKeyPem, options)` → `Promise<Encryptor>`
 
-| Parameter            | Type                  | Description                                             |
-| -------------------- | --------------------- | ------------------------------------------------------- |
-| `publicKeyPem`       | `string`              | SPKI PEM-encoded recipient public key                   |
-| `options.algorithm`  | `Algorithm`           | `Algorithm.RSA_OAEP` or `Algorithm.ECDH`                |
-| `options.chunkSize`  | `number?`             | Plaintext bytes per chunk (default: 65536)              |
-| `options.onProgress` | `(n: number) => void` | Called after each chunk with cumulative encrypted bytes |
+| Parameter            | Type                  | Description                                               |
+| -------------------- | --------------------- | --------------------------------------------------------- |
+| `publicKeyPem`       | `string`              | SPKI PEM-encoded recipient public key                     |
+| `options.algorithm`  | `Algorithm`           | `Algorithm.RSA_OAEP` or `Algorithm.ECDH`                  |
+| `options.chunkSize`  | `number?`             | Plaintext bytes per chunk (default: 65536)                |
+| `options.onProgress` | `(n: number) => void` | Called after each chunk with cumulative encrypted bytes   |
 | `options.keyId`      | `string?`             | Optional header key identifier for key-rotation workflows |
 
 The returned `Encryptor` has two methods:
@@ -299,17 +302,15 @@ The returned `Decryptor` has one method:
 
 **`decryptStream(encrypted, options?)`** → `ReadableStream<Uint8Array>`
 
-| Parameter                         | Type                  | Description                                                                            |
-| --------------------------------- | --------------------- | -------------------------------------------------------------------------------------- |
-| `encrypted`                       | `ReadableStream`      | Ciphertext stream produced by `EncryptingStream`                                       |
-| `options.onProgress`              | `(n: number) => void` | Called after each chunk with cumulative decrypted bytes                                |
-| `options.keyResolver`             | `(keyId, algorithm) => CryptoKey | Promise<CryptoKey>` | Optional resolver for header-embedded `keyId` values |
-| `options.requireFinalChunkMarker` | `boolean`             | Default `true`. Set `false` only to decrypt legacy ciphertexts without terminal marker |
-| `options.allowLegacyChunkAad`     | `boolean`             | Default `false`. Set `true` only for old ciphertexts that used chunk-index-only AAD    |
-| `options.maxHeaderSize`           | `number`              | Default `65536`. Rejects oversized headers early                                       |
-| `options.maxChunkSize`            | `number`              | Default `16777216` (16 MiB). Rejects oversized encrypted chunks                        |
-| `options.maxPlaintextSize`        | `number`              | Default `8589934592` (8 GiB). Caps cumulative decrypted output                         |
-| `options.maxChunks`               | `number`              | Default `1000000`. Caps total encrypted chunk count (including terminal marker)        |
+| Parameter                  | Type                                                           | Description                                                                            |
+| -------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `encrypted`                | `ReadableStream`                                              | Ciphertext stream produced by `EncryptingStream`                                       |
+| `options.onProgress`       | `(n: number) => void`                                         | Called after each chunk with cumulative decrypted bytes                                |
+| `options.keyResolver`      | `(keyId, algorithm) => CryptoKey \| Promise<CryptoKey>`        | Optional resolver for header-embedded `keyId` values                                  |
+| `options.maxHeaderSize`    | `number`                                                       | Default `65536`. Rejects oversized headers early                                       |
+| `options.maxChunkSize`     | `number`                                                       | Default `16777216` (16 MiB). Rejects oversized encrypted chunks                        |
+| `options.maxPlaintextSize` | `number`                                                       | Default `8589934592` (8 GiB). Caps cumulative decrypted output                         |
+| `options.maxChunks`        | `number`                                                       | Default `1000000`. Caps total encrypted chunk count (including terminal marker)        |
 
 ### `decryptFetch(url, privateKeyPem, algorithm, options?, fetchInit?)` → `Promise<ReadableStream<Uint8Array>>`
 
@@ -424,37 +425,8 @@ Expected output:
 
 ---
 
-## Project Structure
-
-```
-src/
-  constants.ts           Algorithm / AlgorithmByte / numeric constants (as const)
-  crypto-utils.ts        AES-GCM chunk encrypt / decrypt
-  chunk.ts               binary encode/decode, AAD generation
-  header.ts              wire format read/write
-  algorithms/
-    rsa-oaep.ts          RSA-OAEP DEK wrap/unwrap, PEM conversion
-    ecdh.ts              ECDH + HKDF → DEK, PEM conversion
-  EncryptingStream.ts    TransformStream (encryption)
-  DecryptingStream.ts    TransformStream (decryption, shared with Node.js)
-  client/
-    index.ts             createEncryptor / encryptFetch
-    fetch-types.d.ts     type extension for RequestInit.duplex
-  server/
-    index.ts             createDecryptor (Node.js 18+)
-tests/                   Vitest tests (71 tests)
-example/                 working client / server / keygen demo
-```
-
----
-
 ## Security Notes
 
-- IVs are generated with `crypto.getRandomValues` — never reused
-- Chunk indices in AAD prevent reordering attacks
-- Header hash in AAD binds chunks to the parsed header (algorithm/header tampering detection)
-- Authenticated terminal marker detects full-last-chunk truncation
-- Decryptor resource limits reject oversized headers/chunks and excessive stream size
-- AES-GCM with 128-bit auth tags provides authenticated encryption
-- RSA-OAEP modulus: 2048 bits minimum
-- ECDH uses P-256; shared secret is processed through HKDF-SHA-256
+For the full policy and threat model, see [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md).
+
+In short, streamseal provides per-chunk authenticated encryption, header-to-chunk binding, truncation detection, and configurable decryption limits. These protections should be paired with secure key handling and verified public key fingerprints in your application.
