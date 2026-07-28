@@ -1,6 +1,6 @@
 {
   "name": "streamseal",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Encrypt large files in the browser while streaming uploads, using Web Crypto, AES-GCM and TransformStream",
   "keywords": [
     "streaming-encryption",
