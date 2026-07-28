@@ -33,7 +33,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=18.5.0"
+    "node": ">=20.0.0"
   },
   "main": "./dist/client/index.js",
   "types": "./dist/client/index.d.ts",

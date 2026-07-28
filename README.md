@@ -16,7 +16,7 @@ streamseal is a zero-dependency TypeScript library for client-side streaming fil
 - **Tamper-evident** — AES-GCM auth tags + chunk index in AAD prevent bit-flipping, reordering, and end-truncation
 - **Key rotation ready** — embed a `keyId` in the header and resolve the right private key at decrypt time
 - **Zero dependencies** — only Web Crypto API and the WHATWG Streams API
-- **Node.js 18.5+ compatible** — same code works server-side via `globalThis.crypto`
+- **Node.js 20+ compatible** — same code works server-side via `globalThis.crypto`
 
 ## Use Cases
 
@@ -168,7 +168,7 @@ a.click();
 
 ---
 
-### Server (Node.js 18.5+)
+### Server (Node.js 20+)
 
 ```ts
 import { createDecryptor, Algorithm } from "streamseal/server";
@@ -182,7 +182,7 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAA...
 app.post("/api/upload", async (req, res) => {
   const decryptor = await createDecryptor(PRIVATE_KEY_PEM, Algorithm.RSA_OAEP);
 
-  // Convert Node.js Readable → Web ReadableStream (Node.js 18.5+)
+  // Convert Node.js Readable → Web ReadableStream (Node.js 20+)
   const webStream = ReadableStream.from(req) as ReadableStream<Uint8Array>;
 
   const decryptedStream = decryptor.decryptStream(webStream);
@@ -384,7 +384,7 @@ if (fingerprint !== EXPECTED_FINGERPRINT) {
 
 ```bash
 npm install
-npm test           # vitest run (Node.js 18.5+)
+npm test           # vitest run (Node.js 20+)
 npm run typecheck
 npm run ci         # lint + format + typecheck + test + build + npm pack --dry-run
 npm run test:watch
