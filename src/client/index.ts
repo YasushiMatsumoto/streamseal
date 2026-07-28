@@ -5,6 +5,18 @@ export type { EncryptingStreamOptions } from "../EncryptingStream.js";
 export { DecryptingStream } from "../DecryptingStream.js";
 export type { DecryptingStreamOptions } from "../DecryptingStream.js";
 export { getKeyFingerprint } from "../crypto-utils.js";
+export {
+  AuthenticationFailedError,
+  InvalidChunkError,
+  InvalidHeaderError,
+  InvalidKeyError,
+  ResourceLimitError,
+  StreamSealError,
+  TruncatedStreamError,
+  UnsupportedAlgorithmError,
+  UnsupportedVersionError,
+} from "../errors.js";
+export type { StreamSealErrorCode } from "../errors.js";
 
 import { Algorithm } from "../constants.js";
 import { EncryptingStream } from "../EncryptingStream.js";
@@ -25,6 +37,7 @@ export interface CreateEncryptorOptions {
   algorithm: Algorithm;
   chunkSize?: number;
   onProgress?: (encryptedBytes: number) => void;
+  keyId?: string;
 }
 
 export interface Encryptor {

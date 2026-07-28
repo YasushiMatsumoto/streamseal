@@ -1,4 +1,5 @@
 import { RSA_HASH } from "../constants.js";
+import { InvalidHeaderError } from "../errors.js";
 
 const subtle = globalThis.crypto.subtle;
 
@@ -84,10 +85,10 @@ export interface RsaOaepHeaderFields {
 }
 
 export function decodeRsaOaepHeaderBody(body: Uint8Array<ArrayBuffer>): RsaOaepHeaderFields {
-  if (body.byteLength < 2) throw new RangeError("RSA-OAEP header body too short");
+  if (body.byteLength < 2) throw new InvalidHeaderError("RSA-OAEP header body too short");
   const wrappedDekLen = new DataView(body.buffer, body.byteOffset).getUint16(0, false);
   if (body.byteLength < 2 + wrappedDekLen) {
-    throw new RangeError("RSA-OAEP header body truncated");
+    throw new InvalidHeaderError("RSA-OAEP header body truncated");
   }
   const wrappedDek = body.slice(2, 2 + wrappedDekLen);
   return { wrappedDek };

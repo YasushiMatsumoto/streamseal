@@ -5,6 +5,7 @@ import {
   encodeRsaOaepHeaderBody,
   decodeRsaOaepHeaderBody,
 } from "../../src/algorithms/rsa-oaep.js";
+import { InvalidHeaderError } from "../../src/errors.js";
 import { generateDataKey, encryptChunk, decryptChunk, generateIv } from "../../src/crypto-utils.js";
 import { buildAad } from "../../src/chunk.js";
 import { generateRsaKeyPair } from "../helpers.js";
@@ -45,6 +46,6 @@ describe("algorithms/rsa-oaep", () => {
   });
 
   it("decodeRsaOaepHeaderBody throws on truncated input", () => {
-    expect(() => decodeRsaOaepHeaderBody(new Uint8Array(1))).toThrow(RangeError);
+    expect(() => decodeRsaOaepHeaderBody(new Uint8Array(1))).toThrow(InvalidHeaderError);
   });
 });

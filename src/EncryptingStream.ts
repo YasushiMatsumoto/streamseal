@@ -9,6 +9,7 @@ export interface EncryptingStreamOptions {
   algorithm: Algorithm;
   chunkSize?: number;
   onProgress?: (encryptedBytes: number) => void;
+  keyId?: string;
 }
 
 /**
@@ -37,7 +38,7 @@ export class EncryptingStream implements TransformStream<Uint8Array, Uint8Array>
     options: EncryptingStreamOptions,
   ): Promise<EncryptingStream> {
     const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
-    const { algorithm, onProgress } = options;
+    const { algorithm, onProgress, keyId } = options;
 
     // --- Key material ---
     let dek: CryptoKey;
@@ -54,7 +55,7 @@ export class EncryptingStream implements TransformStream<Uint8Array, Uint8Array>
       headerBody = encodeEcdhHeaderBody(result.ephemeralPublicKeyRaw, result.salt);
     }
 
-    const { bytes: headerBytes } = encodeHeader(algorithm, headerBody);
+    const { bytes: headerBytes } = encodeHeader(algorithm, headerBody, { keyId });
     const headerHash = await sha256(headerBytes as Uint8Array<ArrayBuffer>);
 
     // --- Build TransformStream ---

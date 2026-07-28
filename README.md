@@ -14,6 +14,7 @@ streamseal is a zero-dependency TypeScript library for client-side streaming fil
 - **Envelope encryption** — a random per-upload DEK is protected by the recipient's public key
 - **RSA-OAEP and ECDH** — choose your key exchange algorithm
 - **Tamper-evident** — AES-GCM auth tags + chunk index in AAD prevent bit-flipping, reordering, and end-truncation
+- **Key rotation ready** — embed a `keyId` in the header and resolve the right private key at decrypt time
 - **Zero dependencies** — only Web Crypto API and the WHATWG Streams API
 - **Node.js 18.5+ compatible** — same code works server-side via `globalThis.crypto`
 
@@ -252,6 +253,14 @@ The AES-GCM **AAD** is:
 This binds every chunk to both its position and the exact header bytes, so swapping,
 reordering, or header tampering causes authentication failure.
 
+## Wire Format Versioning
+
+- `STRENC01` is the current supported wire format tag.
+- Unknown `STRENCxx` version tags are rejected.
+- Package version and wire format version are managed independently.
+- Security-sensitive format changes should use a new wire format tag.
+- Legacy compatibility should be opt-in and explicit at API call sites.
+
 ---
 
 ## API Reference
@@ -264,6 +273,7 @@ reordering, or header tampering causes authentication failure.
 | `options.algorithm`  | `Algorithm`           | `Algorithm.RSA_OAEP` or `Algorithm.ECDH`                |
 | `options.chunkSize`  | `number?`             | Plaintext bytes per chunk (default: 65536)              |
 | `options.onProgress` | `(n: number) => void` | Called after each chunk with cumulative encrypted bytes |
+| `options.keyId`      | `string?`             | Optional header key identifier for key-rotation workflows |
 
 The returned `Encryptor` has two methods:
 
@@ -293,6 +303,7 @@ The returned `Decryptor` has one method:
 | --------------------------------- | --------------------- | -------------------------------------------------------------------------------------- |
 | `encrypted`                       | `ReadableStream`      | Ciphertext stream produced by `EncryptingStream`                                       |
 | `options.onProgress`              | `(n: number) => void` | Called after each chunk with cumulative decrypted bytes                                |
+| `options.keyResolver`             | `(keyId, algorithm) => CryptoKey | Promise<CryptoKey>` | Optional resolver for header-embedded `keyId` values |
 | `options.requireFinalChunkMarker` | `boolean`             | Default `true`. Set `false` only to decrypt legacy ciphertexts without terminal marker |
 | `options.allowLegacyChunkAad`     | `boolean`             | Default `false`. Set `true` only for old ciphertexts that used chunk-index-only AAD    |
 | `options.maxHeaderSize`           | `number`              | Default `65536`. Rejects oversized headers early                                       |
@@ -319,6 +330,34 @@ Throws if the response status is not OK.
 import { Algorithm } from "streamseal";
 Algorithm.RSA_OAEP; // 'RSA-OAEP'
 Algorithm.ECDH; // 'ECDH'
+```
+
+### Typed errors
+
+`streamseal` exports typed errors for robust handling without brittle string checks:
+
+- `StreamSealError` (base class with `code`)
+- `InvalidHeaderError`
+- `UnsupportedVersionError`
+- `UnsupportedAlgorithmError`
+- `InvalidChunkError`
+- `AuthenticationFailedError`
+- `TruncatedStreamError`
+- `ResourceLimitError`
+- `InvalidKeyError`
+
+```ts
+import { AuthenticationFailedError, ResourceLimitError } from "streamseal";
+
+try {
+  // decrypt...
+} catch (err) {
+  if (err instanceof ResourceLimitError) {
+    // input exceeded configured limits
+  } else if (err instanceof AuthenticationFailedError) {
+    // tampered, corrupt, or wrong key context
+  }
+}
 ```
 
 ### `getKeyFingerprint(publicKeyPem)` → `Promise<string>`
@@ -403,7 +442,7 @@ src/
     fetch-types.d.ts     type extension for RequestInit.duplex
   server/
     index.ts             createDecryptor (Node.js 18+)
-tests/                   Vitest tests (66 tests)
+tests/                   Vitest tests (71 tests)
 example/                 working client / server / keygen demo
 ```
 

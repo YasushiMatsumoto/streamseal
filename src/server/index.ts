@@ -8,12 +8,28 @@
 export { Algorithm } from "../constants.js";
 export { DecryptingStream } from "../DecryptingStream.js";
 export type { DecryptingStreamOptions } from "../DecryptingStream.js";
+export {
+  AuthenticationFailedError,
+  InvalidChunkError,
+  InvalidHeaderError,
+  InvalidKeyError,
+  ResourceLimitError,
+  StreamSealError,
+  TruncatedStreamError,
+  UnsupportedAlgorithmError,
+  UnsupportedVersionError,
+} from "../errors.js";
+export type { StreamSealErrorCode } from "../errors.js";
 
 import { Algorithm } from "../constants.js";
 import { DecryptingStream } from "../DecryptingStream.js";
 import { importPrivateKeyPem as importRsaPrivateKeyPem } from "../algorithms/rsa-oaep.js";
 import { importPrivateKeyPem as importEcdhPrivateKeyPem } from "../algorithms/ecdh.js";
 import type { DecryptingStreamOptions } from "../DecryptingStream.js";
+
+export interface CreateDecryptorOptions {
+  keyResolver?: (keyId: string | undefined, algorithm: Algorithm) => Promise<CryptoKey> | CryptoKey;
+}
 
 export interface Decryptor {
   /**
@@ -37,6 +53,7 @@ export interface Decryptor {
 export async function createDecryptor(
   privateKeyPem: string,
   algorithm: Algorithm,
+  options: CreateDecryptorOptions = {},
 ): Promise<Decryptor> {
   let privateKey: CryptoKey;
   if (algorithm === Algorithm.RSA_OAEP) {
@@ -48,9 +65,14 @@ export async function createDecryptor(
   return {
     decryptStream(
       encrypted: ReadableStream<Uint8Array>,
-      options: DecryptingStreamOptions = {},
+      decryptOptions: DecryptingStreamOptions = {},
     ): ReadableStream<Uint8Array> {
-      return encrypted.pipeThrough(DecryptingStream.create(privateKey, options));
+      return encrypted.pipeThrough(
+        DecryptingStream.create(privateKey, {
+          ...decryptOptions,
+          keyResolver: decryptOptions.keyResolver ?? options.keyResolver,
+        }),
+      );
     },
   };
 }
