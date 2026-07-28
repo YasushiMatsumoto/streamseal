@@ -1,6 +1,7 @@
 import { RSA_HASH } from "../constants.js";
 import { InvalidHeaderError } from "../errors.js";
-import { subtle } from "../webcrypto.js";
+
+const subtle = globalThis.crypto.subtle;
 
 // ---------------------------------------------------------------------------
 // PEM conversion helpers
