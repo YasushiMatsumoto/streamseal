@@ -21,6 +21,12 @@ describe("chunk", () => {
     it("produces different bytes for different indices", () => {
       expect(buildAad(0)).not.toEqual(buildAad(1));
     });
+
+    it("appends header hash bytes when provided", () => {
+      const headerHash = new Uint8Array([0xaa, 0xbb, 0xcc]);
+      const aad = buildAad(1, headerHash as Uint8Array<ArrayBuffer>);
+      expect(aad).toEqual(new Uint8Array([0, 0, 0, 1, 0xaa, 0xbb, 0xcc]));
+    });
   });
 
   describe("encodeChunk / decodeChunk round-trip", () => {

@@ -4,16 +4,34 @@
   <img src="example/browser/logo.png" alt="streamseal logo" width="260" />
 </p>
 
-Zero-dependency streaming encryption upload library using the **Web Crypto API** and **TransformStream**. Encrypt files client-side while streaming them to a server via `fetch`, with no data ever stored in memory in full.
+Encrypt large files in the browser before uploading, without loading the entire file into memory.
+
+streamseal is a zero-dependency TypeScript library for client-side streaming file encryption using Web Crypto, AES-GCM, and TransformStream.
 
 ## Features
 
 - **Streaming** — encrypts on-the-fly as bytes pass through a `TransformStream`; no full-file buffering
 - **Envelope encryption** — a random per-upload DEK is protected by the recipient's public key
 - **RSA-OAEP and ECDH** — choose your key exchange algorithm
-- **Tamper-evident** — AES-GCM auth tags + chunk index in AAD prevent both bit-flipping and chunk reordering
+- **Tamper-evident** — AES-GCM auth tags + chunk index in AAD prevent bit-flipping, reordering, and end-truncation
+- **Key rotation ready** — embed a `keyId` in the header and resolve the right private key at decrypt time
 - **Zero dependencies** — only Web Crypto API and the WHATWG Streams API
-- **Node.js 18+ compatible** — same code works server-side via `globalThis.crypto`
+- **Node.js 18.5+ compatible** — same code works server-side via `globalThis.crypto`
+
+## Use Cases
+
+- Encrypt files in the browser before uploading them
+- Stream-encrypt large files without full-file buffering
+- Decrypt uploaded files incrementally on a Node.js server
+- Build client-side encrypted file-sharing or document pipelines
+- Reduce plaintext exposure in transit and upload intermediaries
+
+## Security Notice
+
+streamseal has not undergone an independent cryptographic security audit.
+It uses standard Web Crypto primitives, but the wire format and streaming protocol are project-specific. Do not use streamseal for high-value, safety-critical, or regulated data without an independent security review.
+
+For the full policy, threat model, and disclosure process, see [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md).
 
 ---
 
@@ -150,7 +168,7 @@ a.click();
 
 ---
 
-### Server (Node.js 18+)
+### Server (Node.js 18.5+)
 
 ```ts
 import { createDecryptor, Algorithm } from "streamseal/server";
@@ -220,7 +238,31 @@ app.post("/api/upload", async (req, res) => {
 [ciphertext: variable]  (plaintext + 16 B GCM auth tag)
 ```
 
-The **chunk index** (0-based, big-endian uint32) is passed as AES-GCM **AAD**, so swapping or reordering chunks causes authentication failure.
+The stream ends with an **authenticated terminal marker** (an encrypted empty chunk).
+Decryption requires this marker by default, so removing the final chunk is detected.
+
+The AES-GCM **AAD** is:
+
+```
+[chunk_index: 4 B big-endian] + [sha256(serialized_header): 32 B]
+```
+
+This binds every chunk to both its position and the exact header bytes, so swapping,
+reordering, or header tampering causes authentication failure.
+
+## Wire Format Versioning
+
+- `STRENC01` is the current supported wire format tag.
+- Unknown `STRENCxx` version tags are rejected.
+- Package version and wire format version are managed independently.
+
+## Compatibility and Migration
+
+streamseal keeps the current authenticated format as the only supported wire format.
+
+- Existing decryptors that already receive a single private key continue to work unchanged.
+- The optional `keyId` header envelope is additive; if you do not use it, decryption behaves as before.
+- The current implementation requires the authenticated terminal marker and header-bound chunk AAD. Older variants are no longer accepted.
 
 ---
 
@@ -228,12 +270,13 @@ The **chunk index** (0-based, big-endian uint32) is passed as AES-GCM **AAD**, s
 
 ### `createEncryptor(publicKeyPem, options)` → `Promise<Encryptor>`
 
-| Parameter            | Type                  | Description                                             |
-| -------------------- | --------------------- | ------------------------------------------------------- |
-| `publicKeyPem`       | `string`              | SPKI PEM-encoded recipient public key                   |
-| `options.algorithm`  | `Algorithm`           | `Algorithm.RSA_OAEP` or `Algorithm.ECDH`                |
-| `options.chunkSize`  | `number?`             | Plaintext bytes per chunk (default: 65536)              |
-| `options.onProgress` | `(n: number) => void` | Called after each chunk with cumulative encrypted bytes |
+| Parameter            | Type                  | Description                                               |
+| -------------------- | --------------------- | --------------------------------------------------------- |
+| `publicKeyPem`       | `string`              | SPKI PEM-encoded recipient public key                     |
+| `options.algorithm`  | `Algorithm`           | `Algorithm.RSA_OAEP` or `Algorithm.ECDH`                  |
+| `options.chunkSize`  | `number?`             | Plaintext bytes per chunk (default: 65536)                |
+| `options.onProgress` | `(n: number) => void` | Called after each chunk with cumulative encrypted bytes   |
+| `options.keyId`      | `string?`             | Optional header key identifier for key-rotation workflows |
 
 The returned `Encryptor` has two methods:
 
@@ -259,10 +302,15 @@ The returned `Decryptor` has one method:
 
 **`decryptStream(encrypted, options?)`** → `ReadableStream<Uint8Array>`
 
-| Parameter            | Type                  | Description                                             |
-| -------------------- | --------------------- | ------------------------------------------------------- |
-| `encrypted`          | `ReadableStream`      | Ciphertext stream produced by `EncryptingStream`        |
-| `options.onProgress` | `(n: number) => void` | Called after each chunk with cumulative decrypted bytes |
+| Parameter                  | Type                                                    | Description                                                                     |
+| -------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `encrypted`                | `ReadableStream`                                        | Ciphertext stream produced by `EncryptingStream`                                |
+| `options.onProgress`       | `(n: number) => void`                                   | Called after each chunk with cumulative decrypted bytes                         |
+| `options.keyResolver`      | `(keyId, algorithm) => CryptoKey \| Promise<CryptoKey>` | Optional resolver for header-embedded `keyId` values                            |
+| `options.maxHeaderSize`    | `number`                                                | Default `65536`. Rejects oversized headers early                                |
+| `options.maxChunkSize`     | `number`                                                | Default `16777216` (16 MiB). Rejects oversized encrypted chunks                 |
+| `options.maxPlaintextSize` | `number`                                                | Default `8589934592` (8 GiB). Caps cumulative decrypted output                  |
+| `options.maxChunks`        | `number`                                                | Default `1000000`. Caps total encrypted chunk count (including terminal marker) |
 
 ### `decryptFetch(url, privateKeyPem, algorithm, options?, fetchInit?)` → `Promise<ReadableStream<Uint8Array>>`
 
@@ -283,6 +331,34 @@ Throws if the response status is not OK.
 import { Algorithm } from "streamseal";
 Algorithm.RSA_OAEP; // 'RSA-OAEP'
 Algorithm.ECDH; // 'ECDH'
+```
+
+### Typed errors
+
+`streamseal` exports typed errors for robust handling without brittle string checks:
+
+- `StreamSealError` (base class with `code`)
+- `InvalidHeaderError`
+- `UnsupportedVersionError`
+- `UnsupportedAlgorithmError`
+- `InvalidChunkError`
+- `AuthenticationFailedError`
+- `TruncatedStreamError`
+- `ResourceLimitError`
+- `InvalidKeyError`
+
+```ts
+import { AuthenticationFailedError, ResourceLimitError } from "streamseal";
+
+try {
+  // decrypt...
+} catch (err) {
+  if (err instanceof ResourceLimitError) {
+    // input exceeded configured limits
+  } else if (err instanceof AuthenticationFailedError) {
+    // tampered, corrupt, or wrong key context
+  }
+}
 ```
 
 ### `getKeyFingerprint(publicKeyPem)` → `Promise<string>`
@@ -308,7 +384,9 @@ if (fingerprint !== EXPECTED_FINGERPRINT) {
 
 ```bash
 npm install
-npm test           # vitest run (Node.js 18+)
+npm test           # vitest run (Node.js 18.5+)
+npm run typecheck
+npm run ci         # lint + format + typecheck + test + build + npm pack --dry-run
 npm run test:watch
 npm run build      # tsc
 npm run docs       # generate HTML docs → docs/
@@ -347,34 +425,8 @@ Expected output:
 
 ---
 
-## Project Structure
-
-```
-src/
-  constants.ts           Algorithm / AlgorithmByte / numeric constants (as const)
-  crypto-utils.ts        AES-GCM chunk encrypt / decrypt
-  chunk.ts               binary encode/decode, AAD generation
-  header.ts              wire format read/write
-  algorithms/
-    rsa-oaep.ts          RSA-OAEP DEK wrap/unwrap, PEM conversion
-    ecdh.ts              ECDH + HKDF → DEK, PEM conversion
-  EncryptingStream.ts    TransformStream (encryption)
-  DecryptingStream.ts    TransformStream (decryption, shared with Node.js)
-  client/
-    index.ts             createEncryptor / encryptFetch
-    fetch-types.d.ts     type extension for RequestInit.duplex
-  server/
-    index.ts             createDecryptor (Node.js 18+)
-tests/                   Vitest tests (60 tests)
-example/                 working client / server / keygen demo
-```
-
----
-
 ## Security Notes
 
-- IVs are generated with `crypto.getRandomValues` — never reused
-- Chunk indices in AAD prevent reordering attacks
-- AES-GCM with 128-bit auth tags provides authenticated encryption
-- RSA-OAEP modulus: 2048 bits minimum
-- ECDH uses P-256; shared secret is processed through HKDF-SHA-256
+For the full policy and threat model, see [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md).
+
+In short, streamseal provides per-chunk authenticated encryption, header-to-chunk binding, truncation detection, and configurable decryption limits. These protections should be paired with secure key handling and verified public key fingerprints in your application.

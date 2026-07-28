@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createEncryptor, createDecryptor, decryptFetch, Algorithm } from "../src/client/index.js";
-import { generateRsaKeyPair, generateEcdhKeyPair, collectStream, toStream } from "./helpers.js";
+import { generateRsaKeyPair, generateEcdhKeyPair, collectStream } from "./helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

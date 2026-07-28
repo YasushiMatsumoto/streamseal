@@ -1,12 +1,40 @@
-import { Algorithm, CHUNK_LEN_FIELD, GCM_IV_LENGTH } from "./constants.js";
-import { decryptChunk } from "./crypto-utils.js";
+import {
+  Algorithm,
+  CHUNK_LEN_FIELD,
+  FIXED_PREFIX_LENGTH,
+  GCM_IV_LENGTH,
+  HEADER_OFFSET_HEADER_LEN,
+} from "./constants.js";
+import { decryptChunk, sha256 } from "./crypto-utils.js";
 import { buildAad } from "./chunk.js";
 import { decodeHeader } from "./header.js";
 import { decodeRsaOaepHeaderBody, unwrapDek } from "./algorithms/rsa-oaep.js";
 import { decodeEcdhHeaderBody, deriveDekRecipient } from "./algorithms/ecdh.js";
+import {
+  AuthenticationFailedError,
+  InvalidChunkError,
+  InvalidKeyError,
+  ResourceLimitError,
+  TruncatedStreamError,
+} from "./errors.js";
+const GCM_TAG_BYTES = 16;
+const DEFAULT_MAX_HEADER_SIZE = 64 * 1024;
+const DEFAULT_MAX_CHUNK_SIZE = 16 * 1024 * 1024;
+const DEFAULT_MAX_PLAINTEXT_SIZE = 8 * 1024 * 1024 * 1024;
+const DEFAULT_MAX_CHUNKS = 1_000_000;
 
 export interface DecryptingStreamOptions {
   onProgress?: (decryptedBytes: number) => void;
+  /** Resolve the recipient key for a header-embedded keyId. */
+  keyResolver?: (keyId: string | undefined, algorithm: Algorithm) => Promise<CryptoKey> | CryptoKey;
+  /** Maximum accepted serialized header length (prefix + body), in bytes. */
+  maxHeaderSize?: number;
+  /** Maximum accepted encrypted chunk payload length, in bytes. */
+  maxChunkSize?: number;
+  /** Maximum accepted total decrypted plaintext size, in bytes. */
+  maxPlaintextSize?: number;
+  /** Maximum accepted number of encrypted chunks (includes terminal marker). */
+  maxChunks?: number;
 }
 
 /**
@@ -28,7 +56,31 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
     recipientPrivateKey: CryptoKey,
     options: DecryptingStreamOptions = {},
   ): DecryptingStream {
-    const { onProgress } = options;
+    const {
+      onProgress,
+      keyResolver,
+      maxHeaderSize = DEFAULT_MAX_HEADER_SIZE,
+      maxChunkSize = DEFAULT_MAX_CHUNK_SIZE,
+      maxPlaintextSize = DEFAULT_MAX_PLAINTEXT_SIZE,
+      maxChunks = DEFAULT_MAX_CHUNKS,
+    } = options;
+
+    if (maxHeaderSize < FIXED_PREFIX_LENGTH) {
+      throw new ResourceLimitError(
+        `DecryptingStream: maxHeaderSize must be >= ${FIXED_PREFIX_LENGTH} bytes`,
+      );
+    }
+    if (maxChunkSize < GCM_IV_LENGTH + GCM_TAG_BYTES) {
+      throw new ResourceLimitError(
+        `DecryptingStream: maxChunkSize must be >= ${GCM_IV_LENGTH + GCM_TAG_BYTES} bytes`,
+      );
+    }
+    if (maxPlaintextSize < 0) {
+      throw new ResourceLimitError("DecryptingStream: maxPlaintextSize must be >= 0");
+    }
+    if (maxChunks < 1) {
+      throw new ResourceLimitError("DecryptingStream: maxChunks must be >= 1");
+    }
 
     // Queue of received pieces — avoids re-merging on every transform call.
     const queue: Uint8Array<ArrayBuffer>[] = [];
@@ -36,6 +88,8 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
     let dek: CryptoKey | null = null;
     let chunkIndex = 0;
     let totalDecrypted = 0;
+    let sawFinalChunkMarker = false;
+    let headerHash: Uint8Array<ArrayBuffer> | null = null;
 
     /** Consume `size` bytes from the front of the queue into a single allocation. */
     function drainExact(size: number): Uint8Array<ArrayBuffer> {
@@ -103,12 +157,34 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
 
         // 1. Parse header on first call (may span multiple incoming chunks)
         if (dek === null) {
+          if (queueBytes > maxHeaderSize) {
+            throw new ResourceLimitError(
+              `DecryptingStream: header exceeds maxHeaderSize (${maxHeaderSize} bytes)`,
+            );
+          }
+
+          if (queueBytes >= FIXED_PREFIX_LENGTH) {
+            const prefix = peekBytes(FIXED_PREFIX_LENGTH);
+            const headerBodyLen = new DataView(
+              prefix.buffer,
+              prefix.byteOffset,
+              FIXED_PREFIX_LENGTH,
+            ).getUint32(HEADER_OFFSET_HEADER_LEN, false);
+            const totalHeaderLen = FIXED_PREFIX_LENGTH + headerBodyLen;
+            if (totalHeaderLen > maxHeaderSize) {
+              throw new ResourceLimitError(
+                `DecryptingStream: header length ${totalHeaderLen} exceeds maxHeaderSize ${maxHeaderSize}`,
+              );
+            }
+          }
+
           // Materialise everything available and attempt to parse — happens at most once
           const attempt = materializeAll();
           const decoded = decodeHeader(attempt);
           if (decoded === null) return; // need more data
 
-          const { algorithm, body, totalLength } = decoded;
+          const { algorithm, body, totalLength, keyId } = decoded;
+          headerHash = await sha256(attempt.slice(0, totalLength) as Uint8Array<ArrayBuffer>);
           // Reset queue to hold only the post-header remainder (view, no extra copy)
           const remainder = attempt.subarray(totalLength) as Uint8Array<ArrayBuffer>;
           queue.length = 0;
@@ -118,18 +194,52 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
             queueBytes = remainder.byteLength;
           }
 
+          let resolvedPrivateKey = recipientPrivateKey;
+          if (keyId && keyResolver) {
+            resolvedPrivateKey = await keyResolver(keyId, algorithm);
+          }
+
           if (algorithm === Algorithm.RSA_OAEP) {
             const { wrappedDek } = decodeRsaOaepHeaderBody(body);
-            dek = await unwrapDek(wrappedDek, recipientPrivateKey);
+            try {
+              dek = await unwrapDek(wrappedDek, resolvedPrivateKey);
+            } catch (err) {
+              throw new InvalidKeyError(
+                "DecryptingStream: failed to unwrap DEK with provided key",
+                {
+                  cause: err,
+                },
+              );
+            }
           } else {
             // ECDH
             const { ephemeralPublicKeyRaw, salt } = decodeEcdhHeaderBody(body);
-            dek = await deriveDekRecipient(ephemeralPublicKeyRaw, recipientPrivateKey, salt);
+            try {
+              dek = await deriveDekRecipient(ephemeralPublicKeyRaw, resolvedPrivateKey, salt);
+            } catch (err) {
+              throw new InvalidKeyError(
+                "DecryptingStream: failed to derive DEK with provided key",
+                {
+                  cause: err,
+                },
+              );
+            }
           }
         }
 
         // 2. Drain complete encrypted chunks — one allocation per chunk
         while (queueBytes >= CHUNK_LEN_FIELD) {
+          if (sawFinalChunkMarker) {
+            throw new InvalidChunkError(
+              "DecryptingStream: trailing encrypted chunks found after final marker",
+            );
+          }
+          if (chunkIndex >= maxChunks) {
+            throw new ResourceLimitError(
+              `DecryptingStream: chunk count exceeded maxChunks (${maxChunks})`,
+            );
+          }
+
           // Peek at the 4-byte length prefix without consuming it
           const lenView = peekBytes(CHUNK_LEN_FIELD);
           const payloadLen = new DataView(
@@ -137,6 +247,16 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
             lenView.byteOffset,
             CHUNK_LEN_FIELD,
           ).getUint32(0, false /* big-endian */);
+          if (payloadLen < GCM_IV_LENGTH + GCM_TAG_BYTES) {
+            throw new InvalidChunkError(
+              `DecryptingStream: invalid payload length ${payloadLen} (minimum ${GCM_IV_LENGTH + GCM_TAG_BYTES})`,
+            );
+          }
+          if (payloadLen > maxChunkSize) {
+            throw new ResourceLimitError(
+              `DecryptingStream: payload length ${payloadLen} exceeds maxChunkSize ${maxChunkSize}`,
+            );
+          }
           const totalChunkLength = CHUNK_LEN_FIELD + payloadLen;
           if (queueBytes < totalChunkLength) break; // wait for more data
 
@@ -149,17 +269,30 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
             CHUNK_LEN_FIELD + GCM_IV_LENGTH,
           ) as Uint8Array<ArrayBuffer>;
 
-          const aad = buildAad(chunkIndex);
+          const aad = buildAad(chunkIndex, headerHash!);
           let plaintext: Uint8Array<ArrayBuffer>;
           try {
             plaintext = await decryptChunk(dek!, iv, ciphertext, aad);
           } catch (err) {
-            throw new TypeError(
+            throw new AuthenticationFailedError(
               `DecryptingStream: authentication failed at chunk ${chunkIndex} — data may be tampered or corrupt`,
               { cause: err },
             );
           }
           chunkIndex++;
+
+          if (plaintext.byteLength === 0) {
+            // Authenticated terminal marker (added by EncryptingStream.flush).
+            sawFinalChunkMarker = true;
+            continue;
+          }
+
+          if (totalDecrypted + plaintext.byteLength > maxPlaintextSize) {
+            throw new ResourceLimitError(
+              `DecryptingStream: plaintext exceeds maxPlaintextSize (${maxPlaintextSize} bytes)`,
+            );
+          }
+
           controller.enqueue(plaintext);
 
           totalDecrypted += plaintext.byteLength;
@@ -169,8 +302,13 @@ export class DecryptingStream implements TransformStream<Uint8Array, Uint8Array>
 
       flush() {
         if (queueBytes > 0) {
-          throw new TypeError(
+          throw new TruncatedStreamError(
             `DecryptingStream: ${queueBytes} trailing bytes remain after stream ended — possibly truncated or corrupt data`,
+          );
+        }
+        if (!sawFinalChunkMarker) {
+          throw new TruncatedStreamError(
+            "DecryptingStream: missing final chunk marker — ciphertext may be truncated",
           );
         }
       },

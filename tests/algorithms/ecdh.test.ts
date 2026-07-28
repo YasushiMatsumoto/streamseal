@@ -5,6 +5,7 @@ import {
   encodeEcdhHeaderBody,
   decodeEcdhHeaderBody,
 } from "../../src/algorithms/ecdh.js";
+import { InvalidHeaderError } from "../../src/errors.js";
 import { encryptChunk, decryptChunk, generateIv } from "../../src/crypto-utils.js";
 import { buildAad } from "../../src/chunk.js";
 import { generateEcdhKeyPair } from "../helpers.js";
@@ -114,7 +115,7 @@ describe("algorithms/ecdh", () => {
 
   it("decodeEcdhHeaderBody throws on truncated input", () => {
     expect(() => decodeEcdhHeaderBody(new Uint8Array(1) as Uint8Array<ArrayBuffer>)).toThrow(
-      RangeError,
+      InvalidHeaderError,
     );
   });
 });

@@ -6,6 +6,7 @@ import {
   HKDF_SALT_LENGTH,
 } from "../constants.js";
 import { importRawAesKey } from "../crypto-utils.js";
+import { InvalidHeaderError } from "../errors.js";
 
 const subtle = globalThis.crypto.subtle;
 
@@ -153,10 +154,10 @@ export interface EcdhHeaderFields {
 }
 
 export function decodeEcdhHeaderBody(body: Uint8Array<ArrayBuffer>): EcdhHeaderFields {
-  if (body.byteLength < 2) throw new RangeError("ECDH header body too short");
+  if (body.byteLength < 2) throw new InvalidHeaderError("ECDH header body too short");
   const pubLen = new DataView(body.buffer, body.byteOffset).getUint16(0, false);
   if (body.byteLength < 2 + pubLen + HKDF_SALT_LENGTH)
-    throw new RangeError("ECDH header body truncated");
+    throw new InvalidHeaderError("ECDH header body truncated");
   const ephemeralPublicKeyRaw = body.slice(2, 2 + pubLen) as Uint8Array<ArrayBuffer>;
   const salt = body.slice(2 + pubLen, 2 + pubLen + HKDF_SALT_LENGTH) as Uint8Array<ArrayBuffer>;
   return { ephemeralPublicKeyRaw, salt };

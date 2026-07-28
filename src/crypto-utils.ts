@@ -88,3 +88,9 @@ export async function getKeyFingerprint(publicKeyPem: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join(":");
 }
+
+/** Compute SHA-256 of arbitrary bytes. */
+export async function sha256(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
+  const hashBuf = await subtle.digest("SHA-256", data);
+  return new Uint8Array(hashBuf);
+}

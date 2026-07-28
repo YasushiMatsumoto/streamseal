@@ -124,6 +124,36 @@ describe("tampering detection", () => {
     });
   });
 
+  describe("truncation attack", () => {
+    it("rejects ciphertext when the final complete chunk is removed", async () => {
+      const { publicKey, privateKey } = await generateRsaKeyPair();
+      const chunkSize = 16;
+      const plaintext = crypto.getRandomValues(new Uint8Array(chunkSize * 3)); // 3 full chunks
+
+      const encStream = await EncryptingStream.create(publicKey, {
+        algorithm: Algorithm.RSA_OAEP,
+        chunkSize,
+      });
+      const encrypted = await collectStream(toStream(plaintext).pipeThrough(encStream));
+
+      const headerBodyLen = new DataView(encrypted.buffer).getUint32(9, false);
+      const chunksStart = 13 + headerBodyLen;
+
+      // Walk chunk boundaries and remove the last complete chunk.
+      let offset = chunksStart;
+      const chunkStarts: number[] = [];
+      while (offset < encrypted.byteLength) {
+        chunkStarts.push(offset);
+        const payloadLen = new DataView(encrypted.buffer).getUint32(offset, false);
+        offset += 4 + payloadLen;
+      }
+      const truncated = encrypted.slice(0, chunkStarts[chunkStarts.length - 1]);
+
+      const decStream = DecryptingStream.create(privateKey);
+      await expect(collectStream(toStream(truncated).pipeThrough(decStream))).rejects.toThrow();
+    });
+  });
+
   describe("error message", () => {
     it("includes chunk index in the authentication failure message", async () => {
       const { publicKey, privateKey } = await generateRsaKeyPair();
